@@ -1,0 +1,122 @@
+#!/usr/bin/env jaiph
+
+#
+# Parameterized, multi-subject doc generator — the reusable engine Phase 2 needs.
+#
+#   generate_page(out_path, brief, source)  is subject-agnostic: it applies the
+#   documentation-writer skill to whatever SOURCE and BRIEF it is handed.
+#
+#   default()  wires three real Fablo subjects to that engine, showing coverage
+#   growing across the repo and across Diataxis document types. Add a subject by
+#   adding a source-gatherer script + three lines in default(). Output lands in
+#   poc/docs-agent/out/ and touches no real docs.
+#
+# Run:  jaiph run --unsafe --workspace .. generate.jh
+
+config {
+  agent.backend = "claude"
+}
+
+script read_file = ```bash
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+cat "$1"
+```
+
+script write_file = ```bash
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+mkdir -p "$(dirname "$1")"
+printf '%s\n' "$2" >"$1"
+```
+
+# ---- subject source-gatherers: each returns the raw material for one page ----
+script src_config = ```bash
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+echo "# FILE: docs/schema.json (JSON Schema for the Fablo config file)"
+cat docs/schema.json
+echo
+echo "# FILE: docs/sample.json (a valid example config)"
+cat docs/sample.json
+```
+
+script src_cli = ```bash
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+echo "# Shell CLI usage text (from fablo.sh):"
+sed -n '133,180p' fablo.sh
+echo
+echo "# Subcommands implemented under src/commands/:"
+ls src/commands
+```
+
+script src_howto = ```bash
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+echo "# Shell CLI usage text (from fablo.sh):"
+sed -n '133,180p' fablo.sh
+echo
+echo "# What 'fablo init' scaffolds (src/commands/init/index.ts):"
+cat src/commands/init/index.ts
+```
+
+# ---- the reusable engine: one brief + one source -> one Markdown page ----
+workflow generate_page(out_path, brief, source) {
+  const skill = run read_file("poc/docs-agent/skills/documentation-writer.md")
+
+  const doc = prompt """
+  ${skill}
+
+  ---
+  You are running inside an AUTOMATED pipeline — there is no human to answer
+  clarifying questions or approve an outline, so do NOT ask any and do NOT stop
+  for approval. Adopt the brief below and run your whole workflow in one pass
+  (state a brief outline, then write the full document):
+
+  ${brief}
+
+  Base the document STRICTLY on the SOURCE MATERIAL below. Do not invent details
+  that are not present in it; where the source is silent, omit rather than guess.
+
+  === SOURCE MATERIAL ===
+  ${source}
+
+  Output ONLY the finished Markdown document (lead with a short outline / table
+  of contents). No commentary before or after, and do not wrap the whole document
+  in a code fence.
+  """
+
+  run write_file(out_path, doc)
+  return "wrote ${out_path}"
+}
+
+# ---- the subject list: three real Fablo pages ----
+workflow default() {
+  const cfg = run src_config()
+  const cfg_brief = """
+  Document Type : Reference
+  Title         : Fablo Configuration File Reference
+  Audience      : Developers configuring a Fablo network (comfortable with Docker and basic Hyperledger Fabric concepts)
+  User's Goal   : Understand every top-level field of the Fablo config file and set it correctly
+  Scope         : The four required top-level sections — global, orgs, channels, chaincodes. For each field give purpose, type, required/optional, default, and allowed values. Exclude installation, tutorials, and CLI usage.
+  """
+  run generate_page("poc/docs-agent/out/configuration.md", cfg_brief, cfg)
+
+  const cli = run src_cli()
+  const cli_brief = """
+  Document Type : Reference
+  Title         : Fablo CLI Command Reference
+  Audience      : Developers running Fablo from the command line
+  User's Goal   : Look up what each Fablo command does and the arguments it takes
+  Scope         : The commands shown in the source material only. For each command give purpose, syntax, and arguments. Exclude config-file field details and conceptual tutorials.
+  """
+  run generate_page("poc/docs-agent/out/cli-commands.md", cli_brief, cli)
+
+  const hto = run src_howto()
+  const hto_brief = """
+  Document Type : How-to Guide
+  Title         : Set Up Your First Fablo Network
+  Audience      : A developer new to Fablo who wants a running local network quickly
+  User's Goal   : Go from nothing to a running local Fabric network, then tear it down
+  Scope         : A short, ordered, problem-oriented recipe using the commands in the source (init -> generate/up -> down/prune). Assume Fablo is already installed. Do not enumerate every config field or every command.
+  """
+  run generate_page("poc/docs-agent/out/getting-started.md", hto_brief, hto)
+
+  return "Generated 3 pages into poc/docs-agent/out/"
+}

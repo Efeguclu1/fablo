@@ -1,0 +1,25 @@
+#!/usr/bin/env jaiph
+
+# Bootstraps Jaiph workflows for this repository.
+workflow default() {
+  const bootstrap_summary = prompt """
+    You are bootstrapping Jaiph for this repository.
+    First, read the Jaiph agent bootstrap guide at:
+    .jaiph/SKILL.md
+    Follow that guide and Jaiph language rules exactly.
+    Perform these tasks in order:
+    1) Analyze repository structure, languages, package manager, and build/test/lint commands.
+    2) Detect existing contribution conventions (branching, commit style, CI checks).
+    3) Create or update Jaiph workflows under .jaiph/ for safe feature implementation, including:
+       - preflight checks (clean git state, branch guards when relevant)
+       - implementation workflow
+       - verification workflow (tests/lint/build)
+    4) Keep workflows minimal, composable, and specific to this project.
+    5) Print a short usage guide with exact jaiph run commands.
+    6) End your response with:
+       - WHAT CHANGED: files touched and key edits
+       - WHY: tie each edit to repository structure, tests, or sandbox needs
+  """
+  log "Bootstrap summary (what changed and why):"
+  log "${bootstrap_summary}"
+}

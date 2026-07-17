@@ -1,0 +1,57 @@
+# Shell CLI usage text (from fablo.sh):
+  echo "Usage:
+  fablo init [node] [rest] [dev] [gateway]
+    Creates simple Fablo config in current directory with optional Node.js, chaincode and REST API and dev mode.
+
+  fablo generate [/path/to/fablo-config.json|yaml [/path/to/fablo/target]]
+    Generates network configuration files in the given directory. Default config file path is '\$(pwd)/fablo-config.json' or '\$(pwd)/fablo-config.yaml', default (and recommended) directory '\$(pwd)/fablo-target'.
+
+  fablo up [/path/to/fablo-config.json|yaml]
+    Starts the Hyperledger Fabric network for given Fablo configuration file, creates channels, installs and instantiates chaincodes. If there is no configuration, it will call 'generate' command for given config file.
+
+  fablo <down | start | stop>
+    Downs, starts or stops the Hyperledger Fabric network for configuration in the current directory. This is similar to down, start and stop commands for Docker Compose.
+
+  fablo reset
+    Downs and ups the network. Network state is lost, but the configuration is kept intact.
+
+  fablo prune
+    Downs the network and removes all generated files.
+
+  fablo recreate [/path/to/fablo-config.json|yaml]
+    Prunes and ups the network. Default config file path is '\$(pwd)/fablo-config.json' or '\$(pwd)/fablo-config.yaml'.
+
+  fablo chaincodes install
+    Installs all chaincodes on relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode install <chaincode-name> <version>
+    Installs chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode upgrade <chaincode-name> <version>
+    Upgrades chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode invoke <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>
+    Invokes chaincode with specified parameters.
+
+  fablo chaincodes list <peer> <channel>
+    Lists chaincodes installed on specified peer and channel.
+    
+  fablo chaincode query <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>
+    Queries chaincode with specified parameters.
+
+  fablo channel --help
+    To list available channel query options which can be executed on running network.
+
+  fablo snapshot <target-snapshot-path>
+    Creates a snapshot of the network in target path. The snapshot contains all network state, including transactions and identities.
+
+  fablo restore <source-snapshot-path>
+    Restores the network from a snapshot.
+
+# Subcommands implemented under src/commands/:
+export-network-topology
+extend-config
+init
+setup-network
+validate
+version
