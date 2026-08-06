@@ -43,6 +43,11 @@ const role = """
     Inline contextual links between pages are fine.
   - docs/*.md and docs/reference/*.md carry Jekyll front matter (layout,
     title). Preserve it exactly.
+  - The site renders through kramdown. ALWAYS leave a blank line between a
+    markdown table and whatever precedes it, including a bold lead-in such
+    as a bold "Arguments:" label. Without that blank line kramdown folds the
+    table into the paragraph and it renders as literal pipe characters. Do
+    not copy this mistake from surrounding text if you see it; fix it.
   - Prefer plain language: everyday words, complete sentences, no marketing
     tone. Fabric terms (peer, orderer, channel, chaincode) are fine and need
     no definition.
@@ -133,6 +138,17 @@ workflow check_static() {
       ${err}
     """
     run lib.append_report(commands_entry)
+  }
+
+  run lib.assert_tables_render() catch (err) {
+    const tables_entry = """
+      ## markdown table rendering
+
+      **Status:** drift
+
+      ${err}
+    """
+    run lib.append_report(tables_entry)
   }
 }
 

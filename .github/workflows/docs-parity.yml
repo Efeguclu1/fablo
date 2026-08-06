@@ -7,19 +7,28 @@ name: Docs parity
 #   agent-review   same-repo PRs. Read-only agent review, comments findings.
 #   agent-fix      weekly and on demand. Agent edits the docs, opens a PR.
 
+# NOTE: manual trigger only for now.
+#
+# The "Set up Jaiph" step below depends on a Jaiph setup action that does not
+# exist yet. Until it does, the automatic triggers stay commented out so this
+# workflow cannot fail on unrelated pull requests. Re-enable both blocks in
+# the same commit that points "Set up Jaiph" at the real action.
+#
+# on:
+#   pull_request:
+#     paths:
+#       - "docs/**"
+#       - "README.md"
+#       - "SUPPORTED_FEATURES.md"
+#       - "ARCHITECTURE.md"
+#       - "fablo.sh"
+#       - "src/**"
+#       - ".jaiph/**"
+#   schedule:
+#     # Mondays at 04:00 UTC.
+#     - cron: "0 4 * * 1"
+
 on:
-  pull_request:
-    paths:
-      - "docs/**"
-      - "README.md"
-      - "SUPPORTED_FEATURES.md"
-      - "ARCHITECTURE.md"
-      - "fablo.sh"
-      - "src/**"
-      - ".jaiph/**"
-  schedule:
-    # Mondays at 04:00 UTC.
-    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       mode:
