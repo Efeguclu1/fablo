@@ -1,0 +1,1 @@
+No drift. The changes are bug fixes (configtx V3 Consortium guard, docker-compose indentation, orderer TLS cert path), a cleanup (unused explorer version in k8s), and a new Fablo-REST-vs-peer-dev-mode validation warning — none of which change feature support. The added CA DB 'mysql' type is already reflected by the existing 'CA DB - MySQL' row.

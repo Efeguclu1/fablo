@@ -1,0 +1,64 @@
+#!/usr/bin/env jaiph
+
+#
+# POC: detect drift between recent Fablo source changes and SUPPORTED_FEATURES.md.
+# Report-only — no file edits, no PR. This proves the core jaiph + Claude loop:
+#   gather a diff (script) -> reason about drift (agent) -> structured verdict (typed prompt).
+#
+# Run (on host, whole repo as workspace):
+#   jaiph run --unsafe --workspace .. docs-drift.jh "HEAD~10"
+# Test (mocked, no live agent):
+#   jaiph test docs-drift.test.jh
+
+config {
+  agent.backend = "claude"
+}
+
+# Diff of the source surface that feeds the feature matrix, since <base>.
+# Capture = stdout. Args arrive as $1. Bash ${..:-..} is fine inside script bodies.
+script source_diff = ```bash
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+base="${1:-HEAD~10}"
+git --no-pager diff "$base"..HEAD -- src fablo.sh docs/schema.json 2>/dev/null | head -c 16000
+```
+
+# Current feature matrix the agent will judge against.
+script current_doc = ```bash
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+cat SUPPORTED_FEATURES.md
+```
+
+workflow default(base) {
+  const diff = run source_diff(base)
+  const doc = run current_doc()
+
+  const r = prompt """
+  You are the documentation maintainer for Fablo, a Hyperledger Fabric network
+  generator (Node/TypeScript CLI). Below are (A) a diff of recent source changes
+  and (B) the current SUPPORTED_FEATURES.md feature matrix.
+
+  Decide whether the source changes make any part of the matrix stale, missing,
+  or wrong. Be conservative: only flag drift a docs reader would actually be
+  misled by. If nothing meaningful changed, say so.
+
+  Output:
+    needs_update  - true only if the matrix should change
+    summary       - one or two sentences on what drifted (or "no drift")
+    stale_rows    - comma-separated feature-row names to fix, or "none"
+
+  === A. RECENT SOURCE DIFF ===
+  ${diff}
+
+  === B. CURRENT SUPPORTED_FEATURES.md ===
+  ${doc}
+  """
+  returns "{ needs_update: boolean, summary: string, stale_rows: string }"
+
+  log "needs_update=${r.needs_update}"
+  log "stale_rows: ${r.stale_rows}"
+  log "summary: ${r.summary}"
+
+  return r.summary
+}

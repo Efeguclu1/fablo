@@ -1,0 +1,246 @@
+Command:
+printf %s $'"You are the documentation maintainer for Fablo. Below are (A) a diff of recent\nsource changes and (B) the current SUPPORTED_FEATURES.md feature matrix. Decide\nwhether the matrix is stale/wrong. Be conservative.\n\n=== A. RECENT SOURCE DIFF ===\ndiff --git a/docs/schema.json b/docs/schema.json\nindex 5077015..14dd694 100644\n--- a/docs/schema.json\n+++ b/docs/schema.json\n@@ -12,7 +12,7 @@\n   ],\n   "properties": {\n     "$schema": {\n-      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.5.0/schema.json"\n+      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.6.0/schema.json"\n     },\n     "global": {\n       "$id": "#/properties/global",\ndiff --git a/fablo.sh b/fablo.sh\nindex 965641d..0b30250 100755\n--- a/fablo.sh\n+++ b/fablo.sh\n@@ -2,7 +2,7 @@\n \n set -e\n \n-FABLO_VERSION=2.5.0\n+FABLO_VERSION=2.6.0\n FABLO_IMAGE_NAME="ghcr.io/fablo-io/fablo"\n FABLO_IMAGE="$FABLO_IMAGE_NAME:$FABLO_VERSION"\n \ndiff --git a/src/commands/validate/index.ts b/src/commands/validate/index.ts\nindex 7401b32..51edad0 100644\n--- a/src/commands/validate/index.ts\n+++ b/src/commands/validate/index.ts\n@@ -95,7 +95,7 @@ export default class Validate extends Command {\n \n   private readonly errors = new Listener();\n   private readonly warnings = new Listener();\n-  private fabloConfigPath: string = "";\n+  private fabloConfigPath = "";\n \n   private emit(type: string, event: Message) {\n     if (type === validationErrorType.CRITICAL) {\n@@ -146,6 +146,7 @@ export default class Validate extends Command {\n     this._validateExplorer(networkConfig.global, networkConfig.orgs);\n     this._validateExplorerWithFabricVersion(networkConfig.global, networkConfig.orgs);\n     this._validateDevMode(networkConfig.global);\n+    this._validateFabloRestAndDevMode(networkConfig.global, networkConfig.orgs);\n     this._verifyFabricVersion(networkConfig.global);\n   }\n \n@@ -544,6 +545,20 @@ export default class Validate extends Command {\n     }\n   }\n \n+  _validateFabloRestAndDevMode(global: GlobalJson, orgs: OrgJson[]): void {\n+    if (global.peerDevMode) {\n+      orgs\n+        .filter((o) => o.tools?.fabloRest === true)\n+        .forEach((o) => {\n+          const objectToEmit = {\n+            category: validationCategories.GENERAL,\n+            message: `Fablo REST is enabled for organization \'${o.organization.name}\', but global peerDevMode is also enabled. Using dev mode peers does not expose connected chaincodes through the discovery service, which makes Fablo REST unusable.`,\n+          };\n+          this.emit(validationErrorType.ERROR, objectToEmit);\n+        });\n+    }\n+  }\n+\n   _verifyFabricVersion(global: GlobalJson) {\n     if (!version(global.fabricVersion).isGreaterOrEqual("2.0.0")) {\n       const message = `Fablo supports Fabric in version 2.0.0 and higher`;\n@@ -558,11 +573,10 @@ export default class Validate extends Command {\n     this._validateIfConfigFileExists(configPath);\n     await this.validate();\n     await this.shortSummary();\n+    await this.detailedSummary();\n \n     // Check for compatible updates\n     const listCompatibleUpdates = new ListCompatibleUpdates();\n     await listCompatibleUpdates.checkForCompatibleUpdates();\n-\n   }\n }\n-\ndiff --git a/src/setup-docker/templates/fabric-config/configtx.yaml b/src/setup-docker/templates/fabric-config/configtx.yaml\nindex 5b0c3ec..836cce2 100755\n--- a/src/setup-docker/templates/fabric-config/configtx.yaml\n+++ b/src/setup-docker/templates/fabric-config/configtx.yaml\n@@ -168,7 +168,9 @@ Profiles:\n             Capabilities:\n                 <<: *ApplicationCapabilities\n         <%_ } _%>\n+        <%_ if (!global.capabilities.isV3) { _%>\n         Consortium: SampleConsortium\n+        <%_ } _%>\n         <%_ if (!global.capabilities.isV3) { _%>\n         Consortiums:\n             SampleConsortium:\ndiff --git a/src/setup-docker/templates/fabric-docker/docker-compose.yaml b/src/setup-docker/templates/fabric-docker/docker-compose.yaml\nindex 3f5e534..705089a 100755\n--- a/src/setup-docker/templates/fabric-docker/docker-compose.yaml\n+++ b/src/setup-docker/templates/fabric-docker/docker-compose.yaml\n@@ -183,7 +183,7 @@ services:\n       - basic\n \n   <%= org.tools.explorer.address %>:\n-  image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}\n+    image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}\n     restart: on-failure:8\n     container_name: <%= org.tools.explorer.address %>\n     environment:\ndiff --git a/src/setup-k8s/index.ts b/src/setup-k8s/index.ts\nindex 3434c8f..5ef2d5b 100644\n--- a/src/setup-k8s/index.ts\n+++ b/src/setup-k8s/index.ts\n@@ -90,7 +90,6 @@ export default class SetupK8s extends Command {\n       fabloVersion: config.fabloVersion,\n       fabloBuild: getBuildInfo(),\n       fabloRestVersion: "0.2.0",\n-      hyperledgerExplorerVersion: "1.1.8",\n       fabricCouchDbVersion: "0.4.18",\n       couchDbVersion: "3.1",\n       fabricCaPostgresVersion: "14",\ndiff --git a/src/types/ConnectionProfile.ts b/src/types/ConnectionProfile.ts\nindex 16c3a7f..902d87b 100644\n--- a/src/types/ConnectionProfile.ts\n+++ b/src/types/ConnectionProfile.ts\n@@ -189,7 +189,7 @@ function createOrderers(isTls: boolean, rootPath: string, ordererGroups: Orderer\n         orderers[orderer.address] = {\n           url: `grpcs://localhost:${orderer.port}`,\n           tlsCACerts: {\n-            path: `${rootPath}/ordererOrganizations/${orderer.domain}/orderers/${orderer.address}/tls/ca.crt`,\n+            path: `${rootPath}/peerOrganizations/${orderer.domain}/peers/${orderer.address}/tls/ca.crt`,\n           },\n           grpcOptions: {\n             "ssl-target-name-override": orderer.address,\ndiff --git a/src/types/FabloConfigExtended.ts b/src/types/FabloConfigExtended.ts\nindex cbd6312..8dc2575 100644\n--- a/src/types/FabloConfigExtended.ts\n+++ b/src/types/FabloConfigExtended.ts\n@@ -74,7 +74,7 @@ export interface CAConfig {\n   fullAddress: string;\n   port: number;\n   prefix: string;\n-  db: "sqlite" | "postgres";\n+  db: "sqlite" | "postgres" | "mysql";\n }\n \n export interface PeerConfig {\ndiff --git a/src/types/FabloConfigJson.ts b/src/types/FabloConfigJson.ts\nindex 9411102..7cf741c 100644\n--- a/src/types/FabloConfigJson.ts\n+++ b/src/types/FabloConfigJson.ts\n@@ -27,7 +27,7 @@ export interface OrganizationDetailsJson {\n \n export interface CAJson {\n   prefix: string;\n-  db: "sqlite" | "postgres";\n+  db: "sqlite" | "postgres" | "mysql";\n }\n \n export interface OrdererJson {\n\n=== B. CURRENT SUPPORTED_FEATURES.md ===\n# Supported features\n\nThis document provides an overview of Fablo features. The table below tracks feature compatibility across different Fabric versions, testing status, documentation coverage, and links to relevant issues for ongoing development work.\n\n---\n\n| Feature                                | Fabric v2 | Fabric v3 | Documented | CI tests | Relevant issues |\n|----------------------------------------|-----------|-----------|------------|----------|-----------------|\n| <br>**NETWORK CONFIGURATION**          |           |           |            |          |                 |\n| BFT Consensus                          | -         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |  |\n| RAFT Consensus                         | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| SOLO Consensus                         | ✓         | -         | ✓          | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh) |                 |\n| TLS                                    | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| Orderer Groups                         | ✕         | ✕         | ✕          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) | [#560](https://github.com/hyperledger-labs/fablo/issues/560) |\n| Peer dev mode                          | ✓ (no TLS) | ✕ .      | ✓          | [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh) | |\n| Peer DB - LevelDB                      | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| Peer DB - CouchDB                      | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |\n| CA DB - SQLite                         | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| CA DB - Postgres                       | ✓         | ✓         | ✓          |  |                 |\n| CA DB - MySQL                          | ✕         | ✕         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |  |\n| <br>**CHANNELS**                       |           |           |            |          |                 |\n| Channel query scripts                  | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| <br>**CHAINCODES**                     |           |           |            |          |                 |\n| Node                                   | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| Go                                     | ✓         | ✓         |            | [05_v3](/e2e-network/docker/test-05-v3.sh) |                 |\n| Java                                   | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| Chaincode-as-a-Service (CCaaS)         | ✓         | ✓         |            | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh)         |                 |\n| CCaaS hot reload                       | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh) |                 |\n| Endorsement Policies                   | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| Multi-org Endorsements                 | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh) |                 |\n| Private Data Collections               | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh) |                 |\n| Chaincode scripts (list/query/invoke)  | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [04_v2](/e2e-network/docker/test-04-v2-snapshot.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| Commands: install / upgrade            | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| <br>**TOOLS**                          |           |           |            |          |                 |\n| Fablo REST                             | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |\n| Explorer                               | ✓         | ✕         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| <br>**FABLO COMMANDS**                 |           |           |            |          |                 |\n| `generate`                             | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| `up`                                   | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| `start`, `stop`, `restart`             | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |\n| `down`, `reset`                        | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| `prune`, `recreate`                    | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |\n| `validate`, `extend-config`            | ✓         | ✓         | ✓          | [e2e](/e2e/fabloCommands.test.ts)         |  |\n| `version`                              | ✓         | ✓         | ✓          | [e2e](/e2e/fabloCommands.test.ts)         |  |\n| `init` (node, rest, dev)               | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |\n| `export-network-topology` to Mermaid   | ✓         | ✓         | ✓          |          | [#579](https://github.com/hyperledger-labs/fablo/pull/579)        |\n| Other `init` options                   |           |           |            |          | [#444](https://github.com/hyperledger-labs/fablo/issues/444)      |\n| <br>**SNAPSHOT**                       |           |           |            |          |                 |\n| Create snapshot                        | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |\n| Restore snapshot                       | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |\n| <br>**OTHER FEATURES**                 |           |           |            |          |                 |\n| Custom Fabric images (`fabricImages`)  | ✓         | ✓         | ✓          | [extendGlobal.test.ts](/src/extend-config/extendGlobal.test.ts) | |\n| Peer dev mode                          | ✓         | ✕         | ✓          | [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh)         | [#472](https://github.com/hyperledger-labs/fablo/issues/472) |\n| Connection profiles                    | ✓         | ✓         | ✓          | [e2e_snap](/e2e/__snapshots__/fablo-config-hlf2-1org-1chaincode.json.test.ts.snap)         |        |\n| Gateway client                         |           |           |            | [05__v3](/e2e-network/docker/test-05-v3.sh)         | [#544](https://github.com/hyperledger-labs/fablo/pull/544) |\n| Hooks: post-generate                   | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh)         | [#580](https://github.com/hyperledger-labs/fablo/pull/580) |\n| Hooks: post-start                      | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh)        | [#111](https://github.com/hyperledger-labs/fablo/issues/111) |\n| JSON/YAML support                      | ✓         | ✓         | ✓          |          |                 |\n\n---\n\n**Supported Fabric versions:**\n\nFabric v2 = 2.5.12<br>\nFabric v3 = 3.1.0\n\n**Legend:**\n\n✓ = supported<br>\n✕ = not supported<br>\n<span>-</span> = not applicable"\n\nRespond with exactly one line of valid JSON (no markdown, no explanation) matching this schema: {"needs_update":"boolean","summary":"string","stale_rows":"string"}' \| claude -p --verbose --output-format stream-json --include-partial-messages
+
+Prompt:
+"You are the documentation maintainer for Fablo. Below are (A) a diff of recent
+source changes and (B) the current SUPPORTED_FEATURES.md feature matrix. Decide
+whether the matrix is stale/wrong. Be conservative.
+
+=== A. RECENT SOURCE DIFF ===
+diff --git a/docs/schema.json b/docs/schema.json
+index 5077015..14dd694 100644
+--- a/docs/schema.json
++++ b/docs/schema.json
+@@ -12,7 +12,7 @@
+   ],
+   "properties": {
+     "$schema": {
+-      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.5.0/schema.json"
++      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.6.0/schema.json"
+     },
+     "global": {
+       "$id": "#/properties/global",
+diff --git a/fablo.sh b/fablo.sh
+index 965641d..0b30250 100755
+--- a/fablo.sh
++++ b/fablo.sh
+@@ -2,7 +2,7 @@
+ 
+ set -e
+ 
+-FABLO_VERSION=2.5.0
++FABLO_VERSION=2.6.0
+ FABLO_IMAGE_NAME="ghcr.io/fablo-io/fablo"
+ FABLO_IMAGE="$FABLO_IMAGE_NAME:$FABLO_VERSION"
+ 
+diff --git a/src/commands/validate/index.ts b/src/commands/validate/index.ts
+index 7401b32..51edad0 100644
+--- a/src/commands/validate/index.ts
++++ b/src/commands/validate/index.ts
+@@ -95,7 +95,7 @@ export default class Validate extends Command {
+ 
+   private readonly errors = new Listener();
+   private readonly warnings = new Listener();
+-  private fabloConfigPath: string = "";
++  private fabloConfigPath = "";
+ 
+   private emit(type: string, event: Message) {
+     if (type === validationErrorType.CRITICAL) {
+@@ -146,6 +146,7 @@ export default class Validate extends Command {
+     this._validateExplorer(networkConfig.global, networkConfig.orgs);
+     this._validateExplorerWithFabricVersion(networkConfig.global, networkConfig.orgs);
+     this._validateDevMode(networkConfig.global);
++    this._validateFabloRestAndDevMode(networkConfig.global, networkConfig.orgs);
+     this._verifyFabricVersion(networkConfig.global);
+   }
+ 
+@@ -544,6 +545,20 @@ export default class Validate extends Command {
+     }
+   }
+ 
++  _validateFabloRestAndDevMode(global: GlobalJson, orgs: OrgJson[]): void {
++    if (global.peerDevMode) {
++      orgs
++        .filter((o) => o.tools?.fabloRest === true)
++        .forEach((o) => {
++          const objectToEmit = {
++            category: validationCategories.GENERAL,
++            message: `Fablo REST is enabled for organization '${o.organization.name}', but global peerDevMode is also enabled. Using dev mode peers does not expose connected chaincodes through the discovery service, which makes Fablo REST unusable.`,
++          };
++          this.emit(validationErrorType.ERROR, objectToEmit);
++        });
++    }
++  }
++
+   _verifyFabricVersion(global: GlobalJson) {
+     if (!version(global.fabricVersion).isGreaterOrEqual("2.0.0")) {
+       const message = `Fablo supports Fabric in version 2.0.0 and higher`;
+@@ -558,11 +573,10 @@ export default class Validate extends Command {
+     this._validateIfConfigFileExists(configPath);
+     await this.validate();
+     await this.shortSummary();
++    await this.detailedSummary();
+ 
+     // Check for compatible updates
+     const listCompatibleUpdates = new ListCompatibleUpdates();
+     await listCompatibleUpdates.checkForCompatibleUpdates();
+-
+   }
+ }
+-
+diff --git a/src/setup-docker/templates/fabric-config/configtx.yaml b/src/setup-docker/templates/fabric-config/configtx.yaml
+index 5b0c3ec..836cce2 100755
+--- a/src/setup-docker/templates/fabric-config/configtx.yaml
++++ b/src/setup-docker/templates/fabric-config/configtx.yaml
+@@ -168,7 +168,9 @@ Profiles:
+             Capabilities:
+                 <<: *ApplicationCapabilities
+         <%_ } _%>
++        <%_ if (!global.capabilities.isV3) { _%>
+         Consortium: SampleConsortium
++        <%_ } _%>
+         <%_ if (!global.capabilities.isV3) { _%>
+         Consortiums:
+             SampleConsortium:
+diff --git a/src/setup-docker/templates/fabric-docker/docker-compose.yaml b/src/setup-docker/templates/fabric-docker/docker-compose.yaml
+index 3f5e534..705089a 100755
+--- a/src/setup-docker/templates/fabric-docker/docker-compose.yaml
++++ b/src/setup-docker/templates/fabric-docker/docker-compose.yaml
+@@ -183,7 +183,7 @@ services:
+       - basic
+ 
+   <%= org.tools.explorer.address %>:
+-  image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}
++    image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}
+     restart: on-failure:8
+     container_name: <%= org.tools.explorer.address %>
+     environment:
+diff --git a/src/setup-k8s/index.ts b/src/setup-k8s/index.ts
+index 3434c8f..5ef2d5b 100644
+--- a/src/setup-k8s/index.ts
++++ b/src/setup-k8s/index.ts
+@@ -90,7 +90,6 @@ export default class SetupK8s extends Command {
+       fabloVersion: config.fabloVersion,
+       fabloBuild: getBuildInfo(),
+       fabloRestVersion: "0.2.0",
+-      hyperledgerExplorerVersion: "1.1.8",
+       fabricCouchDbVersion: "0.4.18",
+       couchDbVersion: "3.1",
+       fabricCaPostgresVersion: "14",
+diff --git a/src/types/ConnectionProfile.ts b/src/types/ConnectionProfile.ts
+index 16c3a7f..902d87b 100644
+--- a/src/types/ConnectionProfile.ts
++++ b/src/types/ConnectionProfile.ts
+@@ -189,7 +189,7 @@ function createOrderers(isTls: boolean, rootPath: string, ordererGroups: Orderer
+         orderers[orderer.address] = {
+           url: `grpcs://localhost:${orderer.port}`,
+           tlsCACerts: {
+-            path: `${rootPath}/ordererOrganizations/${orderer.domain}/orderers/${orderer.address}/tls/ca.crt`,
++            path: `${rootPath}/peerOrganizations/${orderer.domain}/peers/${orderer.address}/tls/ca.crt`,
+           },
+           grpcOptions: {
+             "ssl-target-name-override": orderer.address,
+diff --git a/src/types/FabloConfigExtended.ts b/src/types/FabloConfigExtended.ts
+index cbd6312..8dc2575 100644
+--- a/src/types/FabloConfigExtended.ts
++++ b/src/types/FabloConfigExtended.ts
+@@ -74,7 +74,7 @@ export interface CAConfig {
+   fullAddress: string;
+   port: number;
+   prefix: string;
+-  db: "sqlite" | "postgres";
++  db: "sqlite" | "postgres" | "mysql";
+ }
+ 
+ export interface PeerConfig {
+diff --git a/src/types/FabloConfigJson.ts b/src/types/FabloConfigJson.ts
+index 9411102..7cf741c 100644
+--- a/src/types/FabloConfigJson.ts
++++ b/src/types/FabloConfigJson.ts
+@@ -27,7 +27,7 @@ export interface OrganizationDetailsJson {
+ 
+ export interface CAJson {
+   prefix: string;
+-  db: "sqlite" | "postgres";
++  db: "sqlite" | "postgres" | "mysql";
+ }
+ 
+ export interface OrdererJson {
+
+=== B. CURRENT SUPPORTED_FEATURES.md ===
+# Supported features
+
+This document provides an overview of Fablo features. The table below tracks feature compatibility across different Fabric versions, testing status, documentation coverage, and links to relevant issues for ongoing development work.
+
+---
+
+| Feature                                | Fabric v2 | Fabric v3 | Documented | CI tests | Relevant issues |
+|----------------------------------------|-----------|-----------|------------|----------|-----------------|
+| <br>**NETWORK CONFIGURATION**          |           |           |            |          |                 |
+| BFT Consensus                          | -         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |  |
+| RAFT Consensus                         | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| SOLO Consensus                         | ✓         | -         | ✓          | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh) |                 |
+| TLS                                    | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| Orderer Groups                         | ✕         | ✕         | ✕          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) | [#560](https://github.com/hyperledger-labs/fablo/issues/560) |
+| Peer dev mode                          | ✓ (no TLS) | ✕ .      | ✓          | [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh) | |
+| Peer DB - LevelDB                      | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| Peer DB - CouchDB                      | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |
+| CA DB - SQLite                         | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| CA DB - Postgres                       | ✓         | ✓         | ✓          |  |                 |
+| CA DB - MySQL                          | ✕         | ✕         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |  |
+| <br>**CHANNELS**                       |           |           |            |          |                 |
+| Channel query scripts                  | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| <br>**CHAINCODES**                     |           |           |            |          |                 |
+| Node                                   | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| Go                                     | ✓         | ✓         |            | [05_v3](/e2e-network/docker/test-05-v3.sh) |                 |
+| Java                                   | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| Chaincode-as-a-Service (CCaaS)         | ✓         | ✓         |            | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh)         |                 |
+| CCaaS hot reload                       | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh) |                 |
+| Endorsement Policies                   | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| Multi-org Endorsements                 | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh) |                 |
+| Private Data Collections               | ✓         | ✓         |            | [03_v2](/e2e-network/docker/test-03-v2-private-data.sh) |                 |
+| Chaincode scripts (list/query/invoke)  | ✓         | ✓         |            | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [03_v2](/e2e-network/docker/test-03-v2-private-data.sh), [04_v2](/e2e-network/docker/test-04-v2-snapshot.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| Commands: install / upgrade            | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| <br>**TOOLS**                          |           |           |            |          |                 |
+| Fablo REST                             | ✓         | ✓         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |
+| Explorer                               | ✓         | ✕         |            | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| <br>**FABLO COMMANDS**                 |           |           |            |          |                 |
+| `generate`                             | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| `up`                                   | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| `start`, `stop`, `restart`             | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh) |                 |
+| `down`, `reset`                        | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| `prune`, `recreate`                    | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |
+| `validate`, `extend-config`            | ✓         | ✓         | ✓          | [e2e](/e2e/fabloCommands.test.ts)         |  |
+| `version`                              | ✓         | ✓         | ✓          | [e2e](/e2e/fabloCommands.test.ts)         |  |
+| `init` (node, rest, dev)               | ✓         | ✓         | ✓          | [01_v3](/e2e-network/docker/test-01-v3-simple.sh), [05_v3](/e2e-network/docker/test-05-v3.sh), [06_v3](/e2e-network/docker/test-06-v3-bft.sh) |                 |
+| `export-network-topology` to Mermaid   | ✓         | ✓         | ✓          |          | [#579](https://github.com/hyperledger-labs/fablo/pull/579)        |
+| Other `init` options                   |           |           |            |          | [#444](https://github.com/hyperledger-labs/fablo/issues/444)      |
+| <br>**SNAPSHOT**                       |           |           |            |          |                 |
+| Create snapshot                        | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |
+| Restore snapshot                       | ✓         | ✓         | ✓          | [04_v3](/e2e-network/docker/test-04-v3-snapshot-ccaas.sh) |                 |
+| <br>**OTHER FEATURES**                 |           |           |            |          |                 |
+| Custom Fabric images (`fabricImages`)  | ✓         | ✓         | ✓          | [extendGlobal.test.ts](/src/extend-config/extendGlobal.test.ts) | |
+| Peer dev mode                          | ✓         | ✕         | ✓          | [07_v2](/e2e-network/docker/test-07-v2-peer-dev-mode.sh)         | [#472](https://github.com/hyperledger-labs/fablo/issues/472) |
+| Connection profiles                    | ✓         | ✓         | ✓          | [e2e_snap](/e2e/__snapshots__/fablo-config-hlf2-1org-1chaincode.json.test.ts.snap)         |        |
+| Gateway client                         |           |           |            | [05__v3](/e2e-network/docker/test-05-v3.sh)         | [#544](https://github.com/hyperledger-labs/fablo/pull/544) |
+| Hooks: post-generate                   | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh)         | [#580](https://github.com/hyperledger-labs/fablo/pull/580) |
+| Hooks: post-start                      | ✓         | ✓         | ✓          | [02_v2](/e2e-network/docker/test-02-v2-raft-2orgs.sh)        | [#111](https://github.com/hyperledger-labs/fablo/issues/111) |
+| JSON/YAML support                      | ✓         | ✓         | ✓          |          |                 |
+
+---
+
+**Supported Fabric versions:**
+
+Fabric v2 = 2.5.12<br>
+Fabric v3 = 3.1.0
+
+**Legend:**
+
+✓ = supported<br>
+✕ = not supported<br>
+<span>-</span> = not applicable"
+
+Respond with exactly one line of valid JSON (no markdown, no explanation) matching this schema: {"needs_update":"boolean","summary":"string","stale_rows":"string"}
+
+Final answer:
+{"needs_update":true,"summary":"The MySQL CA database is now a valid option in both CAJson.db and CAConfig.db type unions (sqlite|postgres|mysql), but the 'CA DB - MySQL' row still marks it unsupported (✕) for both Fabric v2 and v3. That row is stale and should reflect support consistent with SQLite/Postgres. Other diff changes (v2.6.0 bump, Fablo REST + dev mode validation, V3 Consortium guard, explorer YAML indentation fix, k8s explorer version removal, orderer TLS cert path) are bug fixes/internal changes that do not alter the feature matrix.","stale_rows":"CA DB - MySQL (Fabric v2 ✕→should be ✓, Fabric v3 ✕→should be ✓; type union now includes 'mysql')"}

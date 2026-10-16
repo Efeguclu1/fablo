@@ -1,0 +1,159 @@
+diff --git a/docs/schema.json b/docs/schema.json
+index 5077015..14dd694 100644
+--- a/docs/schema.json
++++ b/docs/schema.json
+@@ -12,7 +12,7 @@
+   ],
+   "properties": {
+     "$schema": {
+-      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.5.0/schema.json"
++      "const": "https://github.com/hyperledger-labs/fablo/releases/download/2.6.0/schema.json"
+     },
+     "global": {
+       "$id": "#/properties/global",
+diff --git a/fablo.sh b/fablo.sh
+index 965641d..0b30250 100755
+--- a/fablo.sh
++++ b/fablo.sh
+@@ -2,7 +2,7 @@
+ 
+ set -e
+ 
+-FABLO_VERSION=2.5.0
++FABLO_VERSION=2.6.0
+ FABLO_IMAGE_NAME="ghcr.io/fablo-io/fablo"
+ FABLO_IMAGE="$FABLO_IMAGE_NAME:$FABLO_VERSION"
+ 
+diff --git a/src/commands/validate/index.ts b/src/commands/validate/index.ts
+index 7401b32..51edad0 100644
+--- a/src/commands/validate/index.ts
++++ b/src/commands/validate/index.ts
+@@ -95,7 +95,7 @@ export default class Validate extends Command {
+ 
+   private readonly errors = new Listener();
+   private readonly warnings = new Listener();
+-  private fabloConfigPath: string = "";
++  private fabloConfigPath = "";
+ 
+   private emit(type: string, event: Message) {
+     if (type === validationErrorType.CRITICAL) {
+@@ -146,6 +146,7 @@ export default class Validate extends Command {
+     this._validateExplorer(networkConfig.global, networkConfig.orgs);
+     this._validateExplorerWithFabricVersion(networkConfig.global, networkConfig.orgs);
+     this._validateDevMode(networkConfig.global);
++    this._validateFabloRestAndDevMode(networkConfig.global, networkConfig.orgs);
+     this._verifyFabricVersion(networkConfig.global);
+   }
+ 
+@@ -544,6 +545,20 @@ export default class Validate extends Command {
+     }
+   }
+ 
++  _validateFabloRestAndDevMode(global: GlobalJson, orgs: OrgJson[]): void {
++    if (global.peerDevMode) {
++      orgs
++        .filter((o) => o.tools?.fabloRest === true)
++        .forEach((o) => {
++          const objectToEmit = {
++            category: validationCategories.GENERAL,
++            message: `Fablo REST is enabled for organization '${o.organization.name}', but global peerDevMode is also enabled. Using dev mode peers does not expose connected chaincodes through the discovery service, which makes Fablo REST unusable.`,
++          };
++          this.emit(validationErrorType.ERROR, objectToEmit);
++        });
++    }
++  }
++
+   _verifyFabricVersion(global: GlobalJson) {
+     if (!version(global.fabricVersion).isGreaterOrEqual("2.0.0")) {
+       const message = `Fablo supports Fabric in version 2.0.0 and higher`;
+@@ -558,11 +573,10 @@ export default class Validate extends Command {
+     this._validateIfConfigFileExists(configPath);
+     await this.validate();
+     await this.shortSummary();
++    await this.detailedSummary();
+ 
+     // Check for compatible updates
+     const listCompatibleUpdates = new ListCompatibleUpdates();
+     await listCompatibleUpdates.checkForCompatibleUpdates();
+-
+   }
+ }
+-
+diff --git a/src/setup-docker/templates/fabric-config/configtx.yaml b/src/setup-docker/templates/fabric-config/configtx.yaml
+index 5b0c3ec..836cce2 100755
+--- a/src/setup-docker/templates/fabric-config/configtx.yaml
++++ b/src/setup-docker/templates/fabric-config/configtx.yaml
+@@ -168,7 +168,9 @@ Profiles:
+             Capabilities:
+                 <<: *ApplicationCapabilities
+         <%_ } _%>
++        <%_ if (!global.capabilities.isV3) { _%>
+         Consortium: SampleConsortium
++        <%_ } _%>
+         <%_ if (!global.capabilities.isV3) { _%>
+         Consortiums:
+             SampleConsortium:
+diff --git a/src/setup-docker/templates/fabric-docker/docker-compose.yaml b/src/setup-docker/templates/fabric-docker/docker-compose.yaml
+index 3f5e534..705089a 100755
+--- a/src/setup-docker/templates/fabric-docker/docker-compose.yaml
++++ b/src/setup-docker/templates/fabric-docker/docker-compose.yaml
+@@ -183,7 +183,7 @@ services:
+       - basic
+ 
+   <%= org.tools.explorer.address %>:
+-  image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}
++    image: ghcr.io/hyperledger-labs/explorer:${HYPERLEDGER_EXPLORER_VERSION}
+     restart: on-failure:8
+     container_name: <%= org.tools.explorer.address %>
+     environment:
+diff --git a/src/setup-k8s/index.ts b/src/setup-k8s/index.ts
+index 3434c8f..5ef2d5b 100644
+--- a/src/setup-k8s/index.ts
++++ b/src/setup-k8s/index.ts
+@@ -90,7 +90,6 @@ export default class SetupK8s extends Command {
+       fabloVersion: config.fabloVersion,
+       fabloBuild: getBuildInfo(),
+       fabloRestVersion: "0.2.0",
+-      hyperledgerExplorerVersion: "1.1.8",
+       fabricCouchDbVersion: "0.4.18",
+       couchDbVersion: "3.1",
+       fabricCaPostgresVersion: "14",
+diff --git a/src/types/ConnectionProfile.ts b/src/types/ConnectionProfile.ts
+index 16c3a7f..902d87b 100644
+--- a/src/types/ConnectionProfile.ts
++++ b/src/types/ConnectionProfile.ts
+@@ -189,7 +189,7 @@ function createOrderers(isTls: boolean, rootPath: string, ordererGroups: Orderer
+         orderers[orderer.address] = {
+           url: `grpcs://localhost:${orderer.port}`,
+           tlsCACerts: {
+-            path: `${rootPath}/ordererOrganizations/${orderer.domain}/orderers/${orderer.address}/tls/ca.crt`,
++            path: `${rootPath}/peerOrganizations/${orderer.domain}/peers/${orderer.address}/tls/ca.crt`,
+           },
+           grpcOptions: {
+             "ssl-target-name-override": orderer.address,
+diff --git a/src/types/FabloConfigExtended.ts b/src/types/FabloConfigExtended.ts
+index cbd6312..8dc2575 100644
+--- a/src/types/FabloConfigExtended.ts
++++ b/src/types/FabloConfigExtended.ts
+@@ -74,7 +74,7 @@ export interface CAConfig {
+   fullAddress: string;
+   port: number;
+   prefix: string;
+-  db: "sqlite" | "postgres";
++  db: "sqlite" | "postgres" | "mysql";
+ }
+ 
+ export interface PeerConfig {
+diff --git a/src/types/FabloConfigJson.ts b/src/types/FabloConfigJson.ts
+index 9411102..7cf741c 100644
+--- a/src/types/FabloConfigJson.ts
++++ b/src/types/FabloConfigJson.ts
+@@ -27,7 +27,7 @@ export interface OrganizationDetailsJson {
+ 
+ export interface CAJson {
+   prefix: string;
+-  db: "sqlite" | "postgres";
++  db: "sqlite" | "postgres" | "mysql";
+ }
+ 
+ export interface OrdererJson {

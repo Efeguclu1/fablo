@@ -1,0 +1,1 @@
+No drift. The most notable source change (CA DB adds 'mysql') is already reflected by the existing 'CA DB - MySQL' row; the remaining changes are version bumps, template/path fixes, and a new REST+dev-mode validation warning that the matrix doesn't track at the compatibility level.

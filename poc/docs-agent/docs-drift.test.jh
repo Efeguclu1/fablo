@@ -1,0 +1,34 @@
+#!/usr/bin/env jaiph
+
+#
+# Deterministic test for docs-drift.jh — scripts and the agent prompt are mocked,
+# so this runs on the host with no git state dependency and no live LLM call.
+import "docs-drift.jh" as drift
+
+test "reports drift when the agent flags a stale row" {
+  mock script drift.source_diff() {
+    echo "diff --git a/src/types/CAJson.ts b/src/types/CAJson.ts"
+    echo "+  db?: 'sqlite' | 'postgres' | 'mysql';"
+  }
+  mock script drift.current_doc() {
+    echo "| CA DB - MySQL | ok | ok |"
+  }
+  mock prompt "{ "needs_update": true, "summary": "CA DB - MySQL row may be stale after the type change", "stale_rows": "CA DB - MySQL" }"
+
+  const out = run drift.default("HEAD~1")
+  expect_contain out "stale"
+}
+
+test "reports no drift when the agent sees none" {
+  mock script drift.source_diff() {
+    echo "diff --git a/README.md b/README.md"
+    echo "+typo fix"
+  }
+  mock script drift.current_doc() {
+    echo "| feature matrix unchanged |"
+  }
+  mock prompt "{ "needs_update": false, "summary": "no drift", "stale_rows": "none" }"
+
+  const out = run drift.default("HEAD~1")
+  expect_contain out "no drift"
+}

@@ -1,0 +1,407 @@
+Command:
+printf %s $'"---\nname: documentation-writer\ndescription: \'Diátaxis Documentation Expert. An expert technical writer specializing in creating high-quality software documentation, guided by the principles and structure of the Diátaxis technical documentation authoring framework.\'\n---\n\n# Diátaxis Documentation Expert\n\nYou are an expert technical writer specializing in creating high-quality software documentation.\nYour work is strictly guided by the principles and structure of the Diátaxis Framework (https://diataxis.fr/).\n\n## GUIDING PRINCIPLES\n\n1. **Clarity:** Write in simple, clear, and unambiguous language.\n2. **Accuracy:** Ensure all information, especially code snippets and technical details, is correct and up-to-date.\n3. **User-Centricity:** Always prioritize the user\'s goal. Every document must help a specific user achieve a specific task.\n4. **Consistency:** Maintain a consistent tone, terminology, and style across all documentation.\n\n## YOUR TASK: The Four Document Types\n\nYou will create documentation across the four Diátaxis quadrants. You must understand the distinct purpose of each:\n\n- **Tutorials:** Learning-oriented, practical steps to guide a newcomer to a successful outcome. A lesson.\n- **How-to Guides:** Problem-oriented, steps to solve a specific problem. A recipe.\n- **Reference:** Information-oriented, technical descriptions of machinery. A dictionary.\n- **Explanation:** Understanding-oriented, clarifying a particular topic. A discussion.\n\n## WORKFLOW\n\nYou will follow this process for every documentation request:\n\n1. **Acknowledge & Clarify:** Acknowledge my request and ask clarifying questions to fill any gaps in the information I provide. You MUST determine the following before proceeding:\n    - **Document Type:** (Tutorial, How-to, Reference, or Explanation)\n    - **Target Audience:** (e.g., novice developers, experienced sysadmins, non-technical users)\n    - **User\'s Goal:** What does the user want to achieve by reading this document?\n    - **Scope:** What specific topics should be included and, importantly, excluded?\n\n2. **Propose a Structure:** Based on the clarified information, propose a detailed outline (e.g., a table of contents with brief descriptions) for the document. Await my approval before writing the full content.\n\n3. **Generate Content:** Once I approve the outline, write the full documentation in well-formatted Markdown. Adhere to all guiding principles.\n\n## CONTEXTUAL AWARENESS\n\n- When I provide other markdown files, use them as context to understand the project\'s existing tone, style, and terminology.\n- DO NOT copy content from them unless I explicitly ask you to.\n- You may not consult external websites or other sources unless I provide a link and instruct you to do so.\n\n---\nYou are running inside an AUTOMATED pipeline — there is no human to answer\nclarifying questions or approve an outline, so do NOT ask any and do NOT stop\nfor approval. Adopt the brief below and run your whole workflow in one pass\n(state a brief outline, then write the full document):\n\nDocument Type : How-to Guide\nTitle         : Set Up Your First Fablo Network\nAudience      : A developer new to Fablo who wants a running local network quickly\nUser\'s Goal   : Go from nothing to a running local Fabric network, then tear it down\nScope         : A short, ordered, problem-oriented recipe using the commands in the source (init -> generate/up -> down/prune). Assume Fablo is already installed. Do not enumerate every config field or every command.\n\nBase the document STRICTLY on the SOURCE MATERIAL below. Do not invent details\nthat are not present in it; where the source is silent, omit rather than guess.\n\n=== SOURCE MATERIAL ===\n# Shell CLI usage text (from fablo.sh):\n  echo "Usage:\n  fablo init [node] [rest] [dev] [gateway]\n    Creates simple Fablo config in current directory with optional Node.js, chaincode and REST API and dev mode.\n\n  fablo generate [/path/to/fablo-config.json|yaml [/path/to/fablo/target]]\n    Generates network configuration files in the given directory. Default config file path is \'\\$(pwd)/fablo-config.json\' or \'\\$(pwd)/fablo-config.yaml\', default (and recommended) directory \'\\$(pwd)/fablo-target\'.\n\n  fablo up [/path/to/fablo-config.json|yaml]\n    Starts the Hyperledger Fabric network for given Fablo configuration file, creates channels, installs and instantiates chaincodes. If there is no configuration, it will call \'generate\' command for given config file.\n\n  fablo <down | start | stop>\n    Downs, starts or stops the Hyperledger Fabric network for configuration in the current directory. This is similar to down, start and stop commands for Docker Compose.\n\n  fablo reset\n    Downs and ups the network. Network state is lost, but the configuration is kept intact.\n\n  fablo prune\n    Downs the network and removes all generated files.\n\n  fablo recreate [/path/to/fablo-config.json|yaml]\n    Prunes and ups the network. Default config file path is \'\\$(pwd)/fablo-config.json\' or \'\\$(pwd)/fablo-config.yaml\'.\n\n  fablo chaincodes install\n    Installs all chaincodes on relevant peers. Chaincode directory is specified in Fablo config file.\n\n  fablo chaincode install <chaincode-name> <version>\n    Installs chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.\n\n  fablo chaincode upgrade <chaincode-name> <version>\n    Upgrades chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.\n\n  fablo chaincode invoke <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>\n    Invokes chaincode with specified parameters.\n\n  fablo chaincodes list <peer> <channel>\n    Lists chaincodes installed on specified peer and channel.\n    \n  fablo chaincode query <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>\n    Queries chaincode with specified parameters.\n\n  fablo channel --help\n    To list available channel query options which can be executed on running network.\n\n  fablo snapshot <target-snapshot-path>\n    Creates a snapshot of the network in target path. The snapshot contains all network state, including transactions and identities.\n\n  fablo restore <source-snapshot-path>\n    Restores the network from a snapshot.\n\n# What \'fablo init\' scaffolds (src/commands/init/index.ts):\nimport { Args, Command } from \'@oclif/core\'\nimport * as chalk from "chalk";\nimport { GlobalJson, FabloConfigJson, ChaincodeJson } from "../../types/FabloConfigJson";\nimport * as path from \'path\';\nimport * as fs from \'fs-extra\';\nimport { version } from "../../../package.json";\n\nfunction getDefaultFabloConfig(): FabloConfigJson {\n  return {\n    $schema: `https://github.com/hyperledger-labs/fablo/releases/download/${version}/schema.json`,\n    global: {\n      fabricVersion: "3.1.0",\n      tls: true,\n      peerDevMode: false,\n    },\n    orgs: [\n      {\n        organization: {\n          name: "Orderer",\n          domain: "orderer.example.com",\n          mspName: "OrdererMSP",\n        },\n        ca: {\n          prefix: "ca",\n          db: "sqlite",\n        },\n        orderers: [\n          {\n            groupName: "group1",\n            type: "BFT",\n            instances: 2,\n            prefix: "orderer",\n          },\n        ],\n      },\n      {\n        organization: {\n          name: "Org1",\n          domain: "org1.example.com",\n          mspName: "Org1MSP",\n        },\n        ca: {\n          prefix: "ca",\n          db: "sqlite",\n        },\n        orderers: [],\n        peer: {\n          instances: 2,\n          db: "LevelDb",\n          prefix: "peer",\n        },\n      },\n    ],\n    channels: [\n      {\n        name: "my-channel1",\n        orgs: [\n          {\n            name: "Org1",\n            peers: ["peer0", "peer1"],\n          },\n        ],\n      },\n    ],\n    chaincodes: [],\n    hooks: {},\n  };\n}\n\nexport default class Init extends Command {\n  static override description =\n    "Creates simple Fablo config in current directory with optional Node.js, chaincode, REST API and dev mode";\n\n  static args = {\n    options: Args.string({\n      multiple: true,\n      required: false,\n      description: \'Options: node, dev, ccaas, gateway, rest (order does not matter)\',\n    }),\n  };\n\n  static strict = false;\n\n  private getEffectiveFlags(args: { options?: string[] | string }): { node: boolean; dev: boolean; ccaas: boolean; gateway: boolean; rest: boolean } {\n    const validOptions = [\'node\', \'dev\', \'ccaas\', \'gateway\', \'rest\'] as const;\n    const optionsArr = Array.isArray(args?.options) ? args.options : args?.options ? [args.options] : [];\n    const raw = optionsArr.map((s) => s.toLowerCase());\n    const invalid = raw.filter((o) => !validOptions.includes(o as (typeof validOptions)[number]));\n    if (invalid.length > 0) {\n      this.error(`Unknown options: ${invalid.join(\', \')}. Valid: ${validOptions.join(\', \')}`);\n    }\n    return {\n      node: raw.includes(\'node\'),\n      dev: raw.includes(\'dev\'),\n      ccaas: raw.includes(\'ccaas\'),\n      gateway: raw.includes(\'gateway\'),\n      rest: raw.includes(\'rest\'),\n    };\n  }\n\n  async copySampleConfig(): Promise<void> {\n    let fabloConfigJson = getDefaultFabloConfig();\n    const parsed = await this.parse(Init);\n    const flags = this.getEffectiveFlags({ options: (parsed.argv ?? []) as string[] });\n\n    if (flags.ccaas) {\n      if (flags.dev || flags.node) {\n        this.log(chalk.red("Error: ccaas cannot be used together with dev or node"));\n        process.exit(1);\n      }\n      this.log("Creating sample CCAAS chaincode");\n\n      const chaincodeConfig: ChaincodeJson = {\n        name: "chaincode1",\n        version: "0.0.1",\n        channel: "my-channel1",\n        lang: "ccaas",\n        image: "ghcr.io/fablo-io/fablo-sample-kv-node-chaincode:2.2.0",\n        privateData: [],\n      };\n      fabloConfigJson = {\n        ...fabloConfigJson,\n        chaincodes: [...fabloConfigJson.chaincodes, chaincodeConfig],\n      };\n    }\n    if (flags.node) {\n      console.log("Creating sample Node.js chaincode");\n\n      const source = path.join(__dirname, \'../../../samples/chaincodes/chaincode-kv-node\');\n      const destination = path.join(process.cwd(), \'chaincodes/chaincode-kv-node\');\n      fs.copySync(source, destination);\n\n      fs.writeFileSync(\n        path.join(destination, \'.nvmrc\'),\n        \'12\'\n      );\n\n\n      // force build on Node 12, since dev deps (@theledger/fabric-mock-stub) may not work on 16\n      // fs.write(destination("chaincodes/chaincode-kv-node/.nvmrc"), "12");\n\n      const chaincodeConfig: ChaincodeJson = flags.dev\n        ? {\n          name: "chaincode1",\n          version: "0.0.1",\n          channel: "my-channel1",\n          lang: "ccaas",\n          image: "hyperledger/fabric-nodeenv:${FABRIC_NODEENV_VERSION:-2.5}",\n          chaincodeMountPath: "$CHAINCODES_BASE_DIR/chaincodes/chaincode-kv-node",\n          chaincodeStartCommand: "npm run start:watch:ccaas",\n          privateData: [],\n        }\n        : {\n          name: "chaincode1",\n          version: "0.0.1",\n          channel: "my-channel1",\n          lang: "node",\n          directory: "./chaincodes/chaincode-kv-node",\n          privateData: [],\n        };\n\n      const postGenerateHook = flags.dev ? { postGenerate: "npm i --prefix ./chaincodes/chaincode-kv-node" } : {};\n\n      fabloConfigJson = {\n        ...fabloConfigJson,\n        chaincodes: [...fabloConfigJson.chaincodes, chaincodeConfig],\n        hooks: { ...fabloConfigJson.hooks, ...postGenerateHook },\n      };\n    }\n\n    if (flags.gateway) {\n      console.log("Creating sample Node.js gateway");\n\n      const src = path.join(__dirname, \'../../../samples/gateway\');\n      const dest = path.join(process.cwd(), \'gateway\');\n      fs.copySync(src, dest);\n      this.log(\'✔ Gateway generated successfully!\');\n    }\n\n    if (flags.rest) {\n      const orgs = fabloConfigJson.orgs.map((org) => ({ ...org, tools: { fabloRest: true } }));\n      fabloConfigJson = { ...fabloConfigJson, orgs };\n    }\n\n    const engine = "docker";\n\n    const global: GlobalJson = {\n      ...fabloConfigJson.global,\n      engine,\n    };\n    fabloConfigJson = { ...fabloConfigJson, global };\n    const rootPath = process.cwd();\n    const outputFile = path.join(rootPath, \'fablo-config.json\');\n    // fs.write(this.destinationPath("fablo-config.json"), JSON.stringify(fabloConfigJson, undefined, 2));\n    fs.writeFileSync(outputFile, JSON.stringify(fabloConfigJson, null, 2));\n\n    this.log("===========================================================");\n    this.log(chalk.bold("Sample config file created! :)"));\n    this.log("You can start your network with \'fablo up\' command");\n    this.log("===========================================================");\n\n  }\n\n  public async run(): Promise<void> {\n\n    await this.copySampleConfig();\n  }\n}\n\nOutput ONLY the finished Markdown document (lead with a short outline / table\nof contents). No commentary before or after, and do not wrap the whole document\nin a code fence."' \| claude -p --verbose --output-format stream-json --include-partial-messages
+
+Prompt:
+"---
+name: documentation-writer
+description: 'Diátaxis Documentation Expert. An expert technical writer specializing in creating high-quality software documentation, guided by the principles and structure of the Diátaxis technical documentation authoring framework.'
+---
+
+# Diátaxis Documentation Expert
+
+You are an expert technical writer specializing in creating high-quality software documentation.
+Your work is strictly guided by the principles and structure of the Diátaxis Framework (https://diataxis.fr/).
+
+## GUIDING PRINCIPLES
+
+1. **Clarity:** Write in simple, clear, and unambiguous language.
+2. **Accuracy:** Ensure all information, especially code snippets and technical details, is correct and up-to-date.
+3. **User-Centricity:** Always prioritize the user's goal. Every document must help a specific user achieve a specific task.
+4. **Consistency:** Maintain a consistent tone, terminology, and style across all documentation.
+
+## YOUR TASK: The Four Document Types
+
+You will create documentation across the four Diátaxis quadrants. You must understand the distinct purpose of each:
+
+- **Tutorials:** Learning-oriented, practical steps to guide a newcomer to a successful outcome. A lesson.
+- **How-to Guides:** Problem-oriented, steps to solve a specific problem. A recipe.
+- **Reference:** Information-oriented, technical descriptions of machinery. A dictionary.
+- **Explanation:** Understanding-oriented, clarifying a particular topic. A discussion.
+
+## WORKFLOW
+
+You will follow this process for every documentation request:
+
+1. **Acknowledge & Clarify:** Acknowledge my request and ask clarifying questions to fill any gaps in the information I provide. You MUST determine the following before proceeding:
+    - **Document Type:** (Tutorial, How-to, Reference, or Explanation)
+    - **Target Audience:** (e.g., novice developers, experienced sysadmins, non-technical users)
+    - **User's Goal:** What does the user want to achieve by reading this document?
+    - **Scope:** What specific topics should be included and, importantly, excluded?
+
+2. **Propose a Structure:** Based on the clarified information, propose a detailed outline (e.g., a table of contents with brief descriptions) for the document. Await my approval before writing the full content.
+
+3. **Generate Content:** Once I approve the outline, write the full documentation in well-formatted Markdown. Adhere to all guiding principles.
+
+## CONTEXTUAL AWARENESS
+
+- When I provide other markdown files, use them as context to understand the project's existing tone, style, and terminology.
+- DO NOT copy content from them unless I explicitly ask you to.
+- You may not consult external websites or other sources unless I provide a link and instruct you to do so.
+
+---
+You are running inside an AUTOMATED pipeline — there is no human to answer
+clarifying questions or approve an outline, so do NOT ask any and do NOT stop
+for approval. Adopt the brief below and run your whole workflow in one pass
+(state a brief outline, then write the full document):
+
+Document Type : How-to Guide
+Title         : Set Up Your First Fablo Network
+Audience      : A developer new to Fablo who wants a running local network quickly
+User's Goal   : Go from nothing to a running local Fabric network, then tear it down
+Scope         : A short, ordered, problem-oriented recipe using the commands in the source (init -> generate/up -> down/prune). Assume Fablo is already installed. Do not enumerate every config field or every command.
+
+Base the document STRICTLY on the SOURCE MATERIAL below. Do not invent details
+that are not present in it; where the source is silent, omit rather than guess.
+
+=== SOURCE MATERIAL ===
+# Shell CLI usage text (from fablo.sh):
+  echo "Usage:
+  fablo init [node] [rest] [dev] [gateway]
+    Creates simple Fablo config in current directory with optional Node.js, chaincode and REST API and dev mode.
+
+  fablo generate [/path/to/fablo-config.json|yaml [/path/to/fablo/target]]
+    Generates network configuration files in the given directory. Default config file path is '\$(pwd)/fablo-config.json' or '\$(pwd)/fablo-config.yaml', default (and recommended) directory '\$(pwd)/fablo-target'.
+
+  fablo up [/path/to/fablo-config.json|yaml]
+    Starts the Hyperledger Fabric network for given Fablo configuration file, creates channels, installs and instantiates chaincodes. If there is no configuration, it will call 'generate' command for given config file.
+
+  fablo <down | start | stop>
+    Downs, starts or stops the Hyperledger Fabric network for configuration in the current directory. This is similar to down, start and stop commands for Docker Compose.
+
+  fablo reset
+    Downs and ups the network. Network state is lost, but the configuration is kept intact.
+
+  fablo prune
+    Downs the network and removes all generated files.
+
+  fablo recreate [/path/to/fablo-config.json|yaml]
+    Prunes and ups the network. Default config file path is '\$(pwd)/fablo-config.json' or '\$(pwd)/fablo-config.yaml'.
+
+  fablo chaincodes install
+    Installs all chaincodes on relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode install <chaincode-name> <version>
+    Installs chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode upgrade <chaincode-name> <version>
+    Upgrades chaincode on all relevant peers. Chaincode directory is specified in Fablo config file.
+
+  fablo chaincode invoke <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>
+    Invokes chaincode with specified parameters.
+
+  fablo chaincodes list <peer> <channel>
+    Lists chaincodes installed on specified peer and channel.
+    
+  fablo chaincode query <channel_name> <chaincode_name> <peers_domains_comma_separated>  <command> <transient>
+    Queries chaincode with specified parameters.
+
+  fablo channel --help
+    To list available channel query options which can be executed on running network.
+
+  fablo snapshot <target-snapshot-path>
+    Creates a snapshot of the network in target path. The snapshot contains all network state, including transactions and identities.
+
+  fablo restore <source-snapshot-path>
+    Restores the network from a snapshot.
+
+# What 'fablo init' scaffolds (src/commands/init/index.ts):
+import { Args, Command } from '@oclif/core'
+import * as chalk from "chalk";
+import { GlobalJson, FabloConfigJson, ChaincodeJson } from "../../types/FabloConfigJson";
+import * as path from 'path';
+import * as fs from 'fs-extra';
+import { version } from "../../../package.json";
+
+function getDefaultFabloConfig(): FabloConfigJson {
+  return {
+    $schema: `https://github.com/hyperledger-labs/fablo/releases/download/${version}/schema.json`,
+    global: {
+      fabricVersion: "3.1.0",
+      tls: true,
+      peerDevMode: false,
+    },
+    orgs: [
+      {
+        organization: {
+          name: "Orderer",
+          domain: "orderer.example.com",
+          mspName: "OrdererMSP",
+        },
+        ca: {
+          prefix: "ca",
+          db: "sqlite",
+        },
+        orderers: [
+          {
+            groupName: "group1",
+            type: "BFT",
+            instances: 2,
+            prefix: "orderer",
+          },
+        ],
+      },
+      {
+        organization: {
+          name: "Org1",
+          domain: "org1.example.com",
+          mspName: "Org1MSP",
+        },
+        ca: {
+          prefix: "ca",
+          db: "sqlite",
+        },
+        orderers: [],
+        peer: {
+          instances: 2,
+          db: "LevelDb",
+          prefix: "peer",
+        },
+      },
+    ],
+    channels: [
+      {
+        name: "my-channel1",
+        orgs: [
+          {
+            name: "Org1",
+            peers: ["peer0", "peer1"],
+          },
+        ],
+      },
+    ],
+    chaincodes: [],
+    hooks: {},
+  };
+}
+
+export default class Init extends Command {
+  static override description =
+    "Creates simple Fablo config in current directory with optional Node.js, chaincode, REST API and dev mode";
+
+  static args = {
+    options: Args.string({
+      multiple: true,
+      required: false,
+      description: 'Options: node, dev, ccaas, gateway, rest (order does not matter)',
+    }),
+  };
+
+  static strict = false;
+
+  private getEffectiveFlags(args: { options?: string[] | string }): { node: boolean; dev: boolean; ccaas: boolean; gateway: boolean; rest: boolean } {
+    const validOptions = ['node', 'dev', 'ccaas', 'gateway', 'rest'] as const;
+    const optionsArr = Array.isArray(args?.options) ? args.options : args?.options ? [args.options] : [];
+    const raw = optionsArr.map((s) => s.toLowerCase());
+    const invalid = raw.filter((o) => !validOptions.includes(o as (typeof validOptions)[number]));
+    if (invalid.length > 0) {
+      this.error(`Unknown options: ${invalid.join(', ')}. Valid: ${validOptions.join(', ')}`);
+    }
+    return {
+      node: raw.includes('node'),
+      dev: raw.includes('dev'),
+      ccaas: raw.includes('ccaas'),
+      gateway: raw.includes('gateway'),
+      rest: raw.includes('rest'),
+    };
+  }
+
+  async copySampleConfig(): Promise<void> {
+    let fabloConfigJson = getDefaultFabloConfig();
+    const parsed = await this.parse(Init);
+    const flags = this.getEffectiveFlags({ options: (parsed.argv ?? []) as string[] });
+
+    if (flags.ccaas) {
+      if (flags.dev || flags.node) {
+        this.log(chalk.red("Error: ccaas cannot be used together with dev or node"));
+        process.exit(1);
+      }
+      this.log("Creating sample CCAAS chaincode");
+
+      const chaincodeConfig: ChaincodeJson = {
+        name: "chaincode1",
+        version: "0.0.1",
+        channel: "my-channel1",
+        lang: "ccaas",
+        image: "ghcr.io/fablo-io/fablo-sample-kv-node-chaincode:2.2.0",
+        privateData: [],
+      };
+      fabloConfigJson = {
+        ...fabloConfigJson,
+        chaincodes: [...fabloConfigJson.chaincodes, chaincodeConfig],
+      };
+    }
+    if (flags.node) {
+      console.log("Creating sample Node.js chaincode");
+
+      const source = path.join(__dirname, '../../../samples/chaincodes/chaincode-kv-node');
+      const destination = path.join(process.cwd(), 'chaincodes/chaincode-kv-node');
+      fs.copySync(source, destination);
+
+      fs.writeFileSync(
+        path.join(destination, '.nvmrc'),
+        '12'
+      );
+
+
+      // force build on Node 12, since dev deps (@theledger/fabric-mock-stub) may not work on 16
+      // fs.write(destination("chaincodes/chaincode-kv-node/.nvmrc"), "12");
+
+      const chaincodeConfig: ChaincodeJson = flags.dev
+        ? {
+          name: "chaincode1",
+          version: "0.0.1",
+          channel: "my-channel1",
+          lang: "ccaas",
+          image: "hyperledger/fabric-nodeenv:${FABRIC_NODEENV_VERSION:-2.5}",
+          chaincodeMountPath: "$CHAINCODES_BASE_DIR/chaincodes/chaincode-kv-node",
+          chaincodeStartCommand: "npm run start:watch:ccaas",
+          privateData: [],
+        }
+        : {
+          name: "chaincode1",
+          version: "0.0.1",
+          channel: "my-channel1",
+          lang: "node",
+          directory: "./chaincodes/chaincode-kv-node",
+          privateData: [],
+        };
+
+      const postGenerateHook = flags.dev ? { postGenerate: "npm i --prefix ./chaincodes/chaincode-kv-node" } : {};
+
+      fabloConfigJson = {
+        ...fabloConfigJson,
+        chaincodes: [...fabloConfigJson.chaincodes, chaincodeConfig],
+        hooks: { ...fabloConfigJson.hooks, ...postGenerateHook },
+      };
+    }
+
+    if (flags.gateway) {
+      console.log("Creating sample Node.js gateway");
+
+      const src = path.join(__dirname, '../../../samples/gateway');
+      const dest = path.join(process.cwd(), 'gateway');
+      fs.copySync(src, dest);
+      this.log('✔ Gateway generated successfully!');
+    }
+
+    if (flags.rest) {
+      const orgs = fabloConfigJson.orgs.map((org) => ({ ...org, tools: { fabloRest: true } }));
+      fabloConfigJson = { ...fabloConfigJson, orgs };
+    }
+
+    const engine = "docker";
+
+    const global: GlobalJson = {
+      ...fabloConfigJson.global,
+      engine,
+    };
+    fabloConfigJson = { ...fabloConfigJson, global };
+    const rootPath = process.cwd();
+    const outputFile = path.join(rootPath, 'fablo-config.json');
+    // fs.write(this.destinationPath("fablo-config.json"), JSON.stringify(fabloConfigJson, undefined, 2));
+    fs.writeFileSync(outputFile, JSON.stringify(fabloConfigJson, null, 2));
+
+    this.log("===========================================================");
+    this.log(chalk.bold("Sample config file created! :)"));
+    this.log("You can start your network with 'fablo up' command");
+    this.log("===========================================================");
+
+  }
+
+  public async run(): Promise<void> {
+
+    await this.copySampleConfig();
+  }
+}
+
+Output ONLY the finished Markdown document (lead with a short outline / table
+of contents). No commentary before or after, and do not wrap the whole document
+in a code fence."
+
+Final answer:
+# Set Up Your First Fablo Network
+
+**Outline**
+1. What You'll Need
+2. Step 1 — Scaffold a Config with `fablo init`
+3. Step 2 — Generate and Start the Network with `fablo up`
+4. Step 3 — Tear Down the Network (`down` / `prune`)
+
+---
+
+## What You'll Need
+
+- Fablo installed and available on your command line.
+- A working directory where Fablo can create its configuration and generated network files.
+
+## Step 1 — Scaffold a Config with `fablo init`
+
+Create a starting configuration file in your current directory:
+
+```
+fablo init
+```
+
+This writes a `fablo-config.json` file describing a simple Hyperledger Fabric network — an orderer organization and one peer organization (`Org1`), a single channel (`my-channel1`), and no chaincodes.
+
+If you want extra scaffolding alongside the config, pass one or more options (order doesn't matter):
+
+```
+fablo init node
+fablo init node dev
+fablo init gateway
+fablo init rest
+```
+
+- `node` — copies a sample Node.js chaincode into `chaincodes/chaincode-kv-node` and registers it in the config.
+- `dev` — used together with `node`, configures the chaincode to run in dev mode (CCAAS-based, with a watch/start command) instead of being installed normally.
+- `gateway` — copies a sample Node.js gateway app into a `gateway` directory.
+- `rest` — enables the Fablo REST tooling for each organization in the config.
+
+`node` and `dev` cannot be combined with `ccaas`.
+
+## Step 2 — Generate and Start the Network with `fablo up`
+
+Start the network defined by your config:
+
+```
+fablo up
+```
+
+By default this looks for `fablo-config.json` or `fablo-config.yaml` in the current directory. `fablo up` starts the Hyperledger Fabric network, creates the channels, and installs and instantiates the chaincodes. If the network configuration hasn't been generated yet, `fablo up` generates it for you automatically before starting.
+
+If you want to generate the network files without starting anything (for inspection, or to target a specific config or output directory), use:
+
+```
+fablo generate [/path/to/fablo-config.json|yaml [/path/to/fablo/target]]
+```
+
+The default output directory is `fablo-target` in your current directory.
+
+## Step 3 — Tear Down the Network
+
+When you're done, stop the network and clean up:
+
+```
+fablo down
+```
+
+This downs the Hyperledger Fabric network for the configuration in the current directory (similar to `docker-compose down`).
+
+To also remove all generated files, use:
+
+```
+fablo prune
+```
+
+`prune` downs the network and removes everything that `generate`/`up` created, leaving you back at just your `fablo-config.json` (or `.yaml`).
